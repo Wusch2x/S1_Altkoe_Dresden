@@ -2,56 +2,74 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>S1 ab Kötzschenbroda ➜ Dresden Freiberger Str.</title>
+  <title>S1 Kötzschenbroda ➜ Freiberger Str. (VVO)</title>
   <style>
-    body { font-family: sans-serif; background: #f9f9f9; margin: 0; padding: 0.7em;}
-    .fahrt { border-bottom: 1px solid #ccc; padding: 0.5em 0; }
-    .zeit { font-weight: bold; min-width: 50px; display:inline-block;}
+    body { font-family: sans-serif; background: #f8f8f8; margin: 0; padding: 0.8em;}
+    .kopf { font-size:1.15em; margin-bottom:0.8em; }
+    .fahrt { border-bottom:1px solid #ddd; padding:0.5em 0; }
+    .zeit { font-weight:bold; min-width:52px; display:inline-block;}
+    .verz { color:#b00; font-weight:bold; }
+    .zugnr { font-size:0.9em; color:#888; }
     .ziel { color: #05398F; font-weight: bold;}
-    .verspaetet { color: #c00; font-weight: bold;}
-    .kopf { font-size: 1.15em; margin-bottom: 0.4em;}
   </style>
 </head>
 <body>
-  <div class="kopf">Nächste S1 ab Kötzschenbroda <span style="float:right;font-size:0.85em;">Richtung Freiberger Str.</span></div>
+  <div class="kopf">Nächste S1: Kötzschenbroda ➜ Freiberger Str.</div>
   <div id="output">Lade...</div>
   <script>
-    function ladeAbfahrten() {
-      fetch("https://webapi.vvo-online.de/dm", {
+    // StopIDs laut VVO-API: Kötzschenbroda = 33000051, Freiberger Str. = 33000151
+    function ladeVerbindungen() {
+      fetch("https://webapi.vvo-online.de/tr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          stopid: "33000051", // Kötzschenbroda
-          limit: 10,          // Mehr holen, damit Filter sicher klappt
-          mot: ["SuburbanRailway"]
+          from: { id: "33000051" },        // Start: Kötzschenbroda
+          to:   { id: "33000151" },        // Ziel: Freiberger Str.
+          limit: 4,                        // Hole mehr, damit wir explizit S1 rausfiltern
+          // Optional kannst du eine Abfahrtzeit explizit setzen: 'when': '2024-08-01T14:55:00'
         })
       })
       .then(r => r.json())
       .then(data => {
-        // Filter: S1 und Ziel enthält exakt "Dresden, Freiberger Str."
-        const abf = (data.Departures || [])
-          .filter(dep => dep.LineName === "S1" && dep.Direction === "Dresden, Freiberger Str.")
-          .slice(0,2);
+        // Extrahiere nur Fahrten mit direkter S1 – Rest kann man nach Wunsch rausfiltern
+        const trips = (data.Trips || [])
+          .filter(trip =>
+            trip.Legs.length === 1 &&                          // Nur Direktfahrten (kein Umstieg)
+            trip.Legs[0].Line && trip.Legs[0].Line.Name === "S1"
+          ).slice(0,2);
 
-        document.getElementById("output").innerHTML = abf.length > 0
-          ? abf.map(dep => {
-              const epoch = parseInt(dep.RealTime.match(/\d+/)[0]);
-              const t = new Date(epoch);
-              const istSpaeter = dep.State === "Delayed";
+        document.getElementById("output").innerHTML = trips.length > 0
+          ? trips.map(trip => {
+              const leg = trip.Legs[0];
+              // Zeitformatierung
+              const abEpoch = parseInt(leg.Departure.Time.match(/\d+/)[0]);
+              const anEpoch = parseInt(leg.Arrival.Time.match(/\d+/)[0]);
+              const ab = new Date(abEpoch);
+              const an = new Date(anEpoch);
+
+              // Verspätung?
+              let delay = "";
+              if (leg.Departure.State === "Delayed") {
+                const planEpoch = parseInt(leg.Departure.ScheduledTime.match(/\d+/)[0]);
+                const diffMin = Math.round((abEpoch - planEpoch) / 60000);
+                if (diffMin > 0) delay = ` <span class="verz">+${diffMin} min</span>`;
+              }
               return `<div class="fahrt">
-                  <span class="zeit">${t.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
-                  <span class="ziel">S1 ➔ Freiberger Str.</span>
-                  ${istSpaeter ? `<span class="verspaetet">🚩 verspätet</span>` : ""}
-                </div>`;
+                <span class="zeit">${ab.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
+                <span class="ziel">S1 ➔ Freiberger Str.</span>
+                <span style="color:#888;">(an ${an.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})})</span>
+                ${delay}
+                <span class="zugnr">[${leg.Line.TrainNum || ""}]</span>
+              </div>`;
             }).join("")
-          : "<div>Keine passenden Abfahrten nach Freiberger Str. gefunden.</div>";
+          : "<div>Keine passende Direktverbindung in nächster Zeit gefunden.</div>";
       })
       .catch(() => {
-        document.getElementById("output").innerText = "Fehler bei der Datenabfrage!";
+        document.getElementById("output").innerText = "Fehler bei der VVO-Verbindungsabfrage!";
       });
     }
-    ladeAbfahrten();
-    setInterval(ladeAbfahrten, 60000); // alle 60s neu laden
+    ladeVerbindungen();
+    setInterval(ladeVerbindungen, 60000); // alle 60s neu laden
   </script>
 </body>
 </html>
