@@ -2,74 +2,42 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>S1 Kötzschenbroda ➜ Freiberger Str. (VVO)</title>
+  <title>VVO TripRequest Debug</title>
   <style>
-    body { font-family: sans-serif; background: #f8f8f8; margin: 0; padding: 0.8em;}
-    .kopf { font-size:1.15em; margin-bottom:0.8em; }
-    .fahrt { border-bottom:1px solid #ddd; padding:0.5em 0; }
-    .zeit { font-weight:bold; min-width:52px; display:inline-block;}
-    .verz { color:#b00; font-weight:bold; }
-    .zugnr { font-size:0.9em; color:#888; }
-    .ziel { color: #05398F; font-weight: bold;}
+    body { font-family: monospace; background: #f9f9f9; color: #222; margin: 0.5em; }
+    pre { background: #eee; padding: 1em; border-radius: 5px;}
+    button { margin-top: 1em; }
   </style>
 </head>
 <body>
-  <div class="kopf">Nächste S1: Kötzschenbroda ➜ Freiberger Str.</div>
-  <div id="output">Lade...</div>
+  <h2>Alle Verbindungen (TripRequest) Kötzschenbroda ➜ Freiberger Str.<br>
+    <span style="font-size:0.95em;font-weight:normal;">(Direkte Rohdaten aus der VVO-API)</span>
+  </h2>
+  <div id="output">Lade Daten...</div>
+  <button onclick="ladeDaten()">Neu laden</button>
   <script>
-    // StopIDs laut VVO-API: Kötzschenbroda = 33000051, Freiberger Str. = 33000151
-    function ladeVerbindungen() {
+    function ladeDaten(){
+      document.getElementById('output').innerHTML = "Lade Daten...";
       fetch("https://webapi.vvo-online.de/tr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: { id: "33000051" },        // Start: Kötzschenbroda
-          to:   { id: "33000151" },        // Ziel: Freiberger Str.
-          limit: 4,                        // Hole mehr, damit wir explizit S1 rausfiltern
-          // Optional kannst du eine Abfahrtzeit explizit setzen: 'when': '2024-08-01T14:55:00'
+          from: { id: "33000051" },   // Kötzschenbroda
+          to:   { id: "33000151" },   // Freiberger Str.
+          limit: 6                    // Hole mehrere Verbindungen
         })
       })
       .then(r => r.json())
       .then(data => {
-        // Extrahiere nur Fahrten mit direkter S1 – Rest kann man nach Wunsch rausfiltern
-        const trips = (data.Trips || [])
-          .filter(trip =>
-            trip.Legs.length === 1 &&                          // Nur Direktfahrten (kein Umstieg)
-            trip.Legs[0].Line && trip.Legs[0].Line.Name === "S1"
-          ).slice(0,2);
-
-        document.getElementById("output").innerHTML = trips.length > 0
-          ? trips.map(trip => {
-              const leg = trip.Legs[0];
-              // Zeitformatierung
-              const abEpoch = parseInt(leg.Departure.Time.match(/\d+/)[0]);
-              const anEpoch = parseInt(leg.Arrival.Time.match(/\d+/)[0]);
-              const ab = new Date(abEpoch);
-              const an = new Date(anEpoch);
-
-              // Verspätung?
-              let delay = "";
-              if (leg.Departure.State === "Delayed") {
-                const planEpoch = parseInt(leg.Departure.ScheduledTime.match(/\d+/)[0]);
-                const diffMin = Math.round((abEpoch - planEpoch) / 60000);
-                if (diffMin > 0) delay = ` <span class="verz">+${diffMin} min</span>`;
-              }
-              return `<div class="fahrt">
-                <span class="zeit">${ab.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}</span>
-                <span class="ziel">S1 ➔ Freiberger Str.</span>
-                <span style="color:#888;">(an ${an.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})})</span>
-                ${delay}
-                <span class="zugnr">[${leg.Line.TrainNum || ""}]</span>
-              </div>`;
-            }).join("")
-          : "<div>Keine passende Direktverbindung in nächster Zeit gefunden.</div>";
+        // Kompakt anzeigen
+        document.getElementById('output').innerHTML = 
+          "<b>Rohdaten aus der API:</b><br><pre>"+JSON.stringify(data, null, 2)+"</pre>";
       })
-      .catch(() => {
-        document.getElementById("output").innerText = "Fehler bei der VVO-Verbindungsabfrage!";
+      .catch(err => {
+        document.getElementById('output').textContent = "Fehler: " + err;
       });
     }
-    ladeVerbindungen();
-    setInterval(ladeVerbindungen, 60000); // alle 60s neu laden
+    ladeDaten();
   </script>
 </body>
 </html>
